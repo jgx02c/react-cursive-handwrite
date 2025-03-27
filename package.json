@@ -3,11 +3,17 @@
   "version": "0.1.0",
   "description": "React component to animate cursive handwriting text",
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
-    "test": "echo \"No tests specified\"",
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && tsc -p tsconfig.esm.json",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -15,7 +21,10 @@
     "url": "git+https://github.com/jgx02c/react-cursive-handwrite.git"
   },
   "keywords": [
-    "handwriting"
+    "handwriting",
+    "react",
+    "animation",
+    "cursive"
   ],
   "author": "joshua goodman",
   "license": "MIT",
@@ -31,9 +40,6 @@
   "devDependencies": {
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
-    "@vitejs/plugin-react": "^4.3.4",
-    "typescript": "^5.8.2",
-    "vite": "^6.2.3",
-    "vite-plugin-dts": "^4.5.3"
+    "typescript": "^5.8.2"
   }
 }
