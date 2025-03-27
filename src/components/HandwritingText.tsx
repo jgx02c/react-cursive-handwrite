@@ -1,5 +1,5 @@
 // src/components/HandwritingText.tsx
-import React, { useEffect, useMemo, ElementType } from "react";
+import React, { useEffect, ElementType } from "react";
 import { motion, useAnimation } from "framer-motion";
 import { defaultPath } from "../fonts/defaultPath";
 
@@ -16,10 +16,6 @@ interface HandwritingTextProps {
   strokeWidth?: number;
   /** Duration of the animation in seconds */
   duration?: number;
-  /** Width of the SVG viewport */
-  width?: number | string;
-  /** Height of the SVG viewport */
-  height?: number | string;
   /** Initial stroke dash array value (defaults to 2000) */
   strokeDashArray?: number;
   /** HTML element type to wrap the text (defaults to 'div') */
@@ -33,13 +29,12 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
   strokeColor = "#000",
   strokeWidth = 2,
   duration = 3,
-  width = "100%",
-  height = "100%",
   strokeDashArray = 2000,
   as: Component = "div",
 }) => {
   const controls = useAnimation();
   const [svgContent, setSvgContent] = React.useState<string | null>(null);
+  const [dimensions, setDimensions] = React.useState({ width: 0, height: 0 });
 
   // Load SVG file if provided
   useEffect(() => {
@@ -59,13 +54,16 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     }
   }, [svgFile]);
 
-  // Calculate viewBox based on path dimensions
-  const viewBox = useMemo(() => {
+  // Calculate viewBox and dimensions based on path
+  useEffect(() => {
     const pathToUse = svgContent || path;
     const pathElement = document.createElementNS("http://www.w3.org/2000/svg", "path");
     pathElement.setAttribute("d", pathToUse);
     const bbox = pathElement.getBBox();
-    return `0 0 ${bbox.width} ${bbox.height}`;
+    setDimensions({
+      width: bbox.width,
+      height: bbox.height
+    });
   }, [path, svgContent]);
 
   useEffect(() => {
@@ -75,15 +73,31 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     });
   }, [controls, duration]);
 
+  const containerStyle = {
+    position: 'relative' as const,
+    display: 'inline-block',
+    width: dimensions.width || 'auto',
+    height: dimensions.height || 'auto',
+    minWidth: '100px',
+    minHeight: '50px'
+  };
+
+  const svgStyle = {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    overflow: 'visible' as const
+  };
+
   return (
-    <Component style={{ position: 'relative', display: 'inline-block' }}>
+    <Component style={containerStyle}>
       <svg
-        width={width}
-        height={height}
-        viewBox={viewBox}
+        viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        style={{ position: 'absolute', top: 0, left: 0, overflow: "visible" }}
+        style={svgStyle}
       >
         <motion.path
           d={svgContent || path}
@@ -95,7 +109,9 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
           animate={controls}
         />
       </svg>
-      <span style={{ visibility: 'hidden' }}>{children}</span>
+      <span style={{ visibility: 'hidden', display: 'block', width: dimensions.width, height: dimensions.height }}>
+        {children}
+      </span>
     </Component>
   );
 };
