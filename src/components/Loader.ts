@@ -9,7 +9,7 @@ export type LetterPath = {
 export type LetterPaths = Record<string, LetterPath>;
 
 // Parse SVG from the converter's format
-function parseSVG(svgString: string): LetterPath {
+const parseSVG = (svgString: string): LetterPath => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgString, 'image/svg+xml');
   const svg = doc.querySelector('svg');
@@ -36,13 +36,13 @@ function parseSVG(svgString: string): LetterPath {
     width,
     height
   };
-}
+};
 
 // Store paths for each letter
 const letterPaths: Record<string, LetterPaths> = {};
 
 // Initialize font with a specific path
-export async function initializeFont(fontPath: string): Promise<LetterPaths> {
+export const initializeFont = async (fontPath: string): Promise<LetterPaths> => {
   console.log(`Initializing font with path: ${fontPath}`);
   
   if (letterPaths[fontPath]) {
@@ -57,45 +57,58 @@ export async function initializeFont(fontPath: string): Promise<LetterPaths> {
     // Create a promise for each letter
     const letterPromises = letters.split('').map(async (letter) => {
       try {
-        // Try to load the SVG file
-        const response = await fetch(`/${fontPath}/${letter}.svg`);
-        if (response.ok) {
-          const svgContent = await response.text();
-          paths[letter] = parseSVG(svgContent);
-          console.log(`✅ Successfully loaded SVG for letter "${letter}"`);
-          return true;
+        // Try to load the SVG file - handle both relative and absolute paths
+        const path = fontPath.startsWith('/') ? fontPath : `/${fontPath}`;
+        const response = await fetch(`${path}/${letter}.svg`);
+        if (!response.ok) {
+          throw new Error(`Failed to load SVG for letter "${letter}": ${response.status} ${response.statusText}`);
         }
-        return false;
+        
+        const svgContent = await response.text();
+        const parsedPath = parseSVG(svgContent);
+        
+        if (!parsedPath?.path) {
+          throw new Error(`Failed to parse SVG for letter "${letter}"`);
+        }
+        
+        paths[letter] = parsedPath;
+        console.log(`✅ Successfully loaded SVG for letter "${letter}"`);
+        return true;
       } catch (error) {
-        console.log(`❌ Error loading SVG for letter "${letter}":`, error);
+        console.error(`❌ Error loading SVG for letter "${letter}":`, error);
         return false;
       }
     });
     
     // Wait for all letters to be processed
-    await Promise.allSettled(letterPromises);
+    const results = await Promise.allSettled(letterPromises);
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value).length;
     
-    console.log(`Loaded ${Object.keys(paths).length} letter SVGs for font "${fontPath}"`);
+    if (successCount === 0) {
+      throw new Error('Failed to load any letter SVGs');
+    }
+    
+    console.log(`Loaded ${successCount} letter SVGs for font "${fontPath}"`);
     letterPaths[fontPath] = paths;
     return paths;
   } catch (error) {
     console.error('Error loading font:', error);
-    return {};
+    throw error; // Re-throw to let the component handle the error
   }
-}
+};
 
 // Get the path for a letter
-export function getLetterPath(letter: string, fontPaths: LetterPaths): LetterPath | null {
+export const getLetterPath = (letter: string, fontPaths: LetterPaths): LetterPath | null => {
   const lowerLetter = letter.toLowerCase();
   if (fontPaths[lowerLetter]) {
     return fontPaths[lowerLetter];
   }
   console.log(`No SVG path found for letter: "${letter}"`);
   return null;
-}
+};
 
 // Generate a path for a word
-export function generateWordPath(word: string, fontPaths: LetterPaths): { path: string; fill: string } {
+export const generateWordPath = (word: string, fontPaths: LetterPaths): { path: string; fill: string } => {
   console.log(`Generating path for word: "${word}" with ${Object.keys(fontPaths).length} available letters`);
   
   let path = '';
@@ -193,4 +206,4 @@ export function generateWordPath(word: string, fontPaths: LetterPaths): { path: 
   console.log(`Generated path length: ${path.length} characters`);
   console.log(`Final path: ${path.substring(0, 100)}...`);
   return { path, fill: currentFill };
-} 
+}; 
