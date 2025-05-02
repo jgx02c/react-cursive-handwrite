@@ -1,15 +1,12 @@
 // src/components/HandwritingText.tsx
-import React, { useEffect, ElementType } from "react";
+import React, { useEffect, ElementType, useRef, useState } from "react";
 import { motion, useAnimation } from "framer-motion";
-import { generateWordPath, initializeFont } from "./Loader";
+import { initializeFont, LetterPaths } from "./Loader";
+import { QueueManager, QueuedLetter } from "./QueueManager";
 
 interface HandwritingTextProps {
   /** The text to be displayed */
   children: React.ReactNode;
-  /** SVG path data for the text. If not provided, uses the SVG loader */
-  path?: string;
-  /** Imported SVG file path */
-  svgFile?: string;
   /** Color of the stroke */
   strokeColor?: string;
   /** Width of the stroke */
@@ -26,8 +23,6 @@ interface HandwritingTextProps {
 
 export const HandwritingText: React.FC<HandwritingTextProps> = ({
   children,
-  path,
-  svgFile,
   strokeColor = "#000",
   strokeWidth = 2,
   duration = 3,
@@ -41,16 +36,14 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     }
   };
 
-  log('Rendering with children:', children, 'fontPath:', fontPath);
-  
   const controls = useAnimation();
-  const [svgContent, setSvgContent] = React.useState<string | null>(null);
-  const [dimensions, setDimensions] = React.useState({ width: 0, height: 0 });
-  const [letterPaths, setLetterPaths] = React.useState<Record<string, any>>({});
+  const [letterPaths, setLetterPaths] = React.useState<LetterPaths>({});
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [pathLength, setPathLength] = React.useState(0);
-  const [isInitialized, setIsInitialized] = React.useState(false);
+  const [dimensions, setDimensions] = React.useState({ width: 0, height: 0 });
+  const [renderedLetters, setRenderedLetters] = useState<QueuedLetter[]>([]);
+  const [currentLetter, setCurrentLetter] = React.useState<QueuedLetter | null>(null);
+  const queueManagerRef = useRef<QueueManager | null>(null);
 
   // Initialize font
   useEffect(() => {
@@ -72,14 +65,13 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
         }
         
         setLetterPaths(paths);
+        queueManagerRef.current = new QueueManager(paths);
         setIsLoading(false);
-        setIsInitialized(true);
       } catch (error) {
         log('Error loading font:', error);
         if (mounted) {
           setError(`Failed to load font: ${error instanceof Error ? error.message : String(error)}`);
           setIsLoading(false);
-          setIsInitialized(true);
         }
       }
     };
@@ -90,126 +82,85 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     };
   }, [fontPath, debug]);
 
-  // Load SVG file if provided
+  // Process text and update dimensions
   useEffect(() => {
-    if (!svgFile) return;
+    if (isLoading || !queueManagerRef.current) return;
     
-    setIsLoading(true);
-    fetch(svgFile)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Failed to load SVG file: ${response.status} ${response.statusText}`);
-        }
-        return response.text();
-      })
-      .then(text => {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(text, 'image/svg+xml');
-        const pathElement = doc.querySelector('path');
-        if (pathElement) {
-          setSvgContent(pathElement.getAttribute('d') || null);
-        } else {
-          throw new Error('SVG file does not contain a path element');
-        }
-        setIsLoading(false);
-      })
-      .catch(error => {
-        log('Error loading SVG file:', error);
-        setError(`Failed to load SVG file: ${error instanceof Error ? error.message : String(error)}`);
-        setIsLoading(false);
-      });
-  }, [svgFile, debug]);
-
-  // Calculate viewBox and dimensions based on path
-  useEffect(() => {
-    if (isLoading || !isInitialized) return;
-    
-    if (path) {
-      // Direct path provided, use it without word generation
-      try {
-        createSvgAndSetDimensions(path);
-      } catch (error) {
-        log('Error using provided path:', error);
-        setError(`Error with provided path: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      return;
-    }
-
-    // Get text content from children
     const text = typeof children === 'string' ? children : '';
     if (!text) {
       setError('No text content provided');
       return;
     }
     
-    log('Processing text:', text);
-    log('Available letter paths:', Object.keys(letterPaths).join(', '));
+    queueManagerRef.current.reset();
+    queueManagerRef.current.addText(text);
+    setRenderedLetters([]); // Clear previous letters
     
-    if (Object.keys(letterPaths).length === 0) {
-      setError('No letter paths available');
-      return;
-    }
+    // Add padding to dimensions
+    const padding = 20;
+    setDimensions({
+      width: queueManagerRef.current.getTotalLength() + (padding * 2),
+      height: queueManagerRef.current.getMaxHeight() + (padding * 2)
+    });
     
-    try {
-      const result = generateWordPath(text, letterPaths);
-      
-      if (!result.path) {
-        log('No path generated for text:', text);
-        setError('Failed to generate path');
-        return;
-      }
+    // Start with first letter
+    setCurrentLetter(queueManagerRef.current.getNextLetter());
+  }, [children, letterPaths, isLoading]);
 
-      log('Path generated successfully, length:', result.path.length);
-      createSvgAndSetDimensions(result.path);
-    } catch (error) {
-      log('Error generating word path:', error);
-      setError(`Error generating path: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }, [path, children, letterPaths, isLoading, isInitialized, debug]);
+  // Calculate baseline Y position - use 75% of max height as baseline
+  const baselineY = Math.floor(dimensions.height * 0.75);
 
-  const createSvgAndSetDimensions = (pathData: string) => {
-    // Create a temporary SVG element
-    try {
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      const pathElement = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      pathElement.setAttribute("d", pathData);
-      svg.appendChild(pathElement);
-      document.body.appendChild(svg);
-      
-      const bbox = pathElement.getBBox();
-      log('Bounding box:', bbox);
-      
-      // Get the total path length for animation
-      const length = pathElement.getTotalLength();
-      setPathLength(length);
-      log('Path length:', length);
-      
-      // Clean up
-      document.body.removeChild(svg);
-      
-      setDimensions({
-        width: bbox.width + 40, // Add some padding
-        height: bbox.height + 40
-      });
-      setSvgContent(pathData);
-    } catch (error) {
-      log('Error creating SVG:', error);
-      throw error;
-    }
-  };
-
+  // Animate current letter
   useEffect(() => {
-    if (svgContent && pathLength > 0) {
-      controls.set({ strokeDashoffset: pathLength });
-      controls.start({
-        strokeDashoffset: 0,
-        transition: { 
-          duration,
-          ease: [0.4, 0, 0.2, 1],
-        },
-      });
-    }
-  }, [controls, duration, svgContent, pathLength]);
+    if (!currentLetter) return;
+    
+    // Create a temporary SVG to measure the path length
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", currentLetter.path.path);
+    svg.appendChild(path);
+    document.body.appendChild(svg);
+    
+    const pathLength = path.getTotalLength();
+    document.body.removeChild(svg);
+    
+    log(`Animating letter "${currentLetter.letter}" with length ${pathLength}`);
+
+    const text = typeof children === 'string' ? children : '';
+    const letterDuration = (duration / text.length) * 1.25; // Slightly longer duration for overlap
+    
+    controls.set({ 
+      strokeDasharray: pathLength,
+      strokeDashoffset: pathLength,
+      opacity: 1 
+    });
+    
+    controls.start({
+      strokeDashoffset: 0,
+      opacity: 1,
+      transition: {
+        duration: letterDuration,
+        ease: [0.33, 1, 0.68, 1], // Custom easing for smoother animation
+      },
+    }).then(() => {
+      if (queueManagerRef.current) {
+        setRenderedLetters(prev => [...prev, currentLetter]);
+        queueManagerRef.current.markAsRendered(currentLetter.order);
+      }
+    });
+
+    // Start next letter when current letter is 60% complete for smoother overlap
+    const timer = setTimeout(() => {
+      if (queueManagerRef.current) {
+        const nextLetter = queueManagerRef.current.getNextLetter();
+        if (nextLetter) {
+          setCurrentLetter(nextLetter);
+        }
+      }
+    }, letterDuration * 1000 * 0.6); // Start next letter earlier
+
+    return () => clearTimeout(timer);
+  }, [currentLetter, controls, duration, children]);
 
   const containerStyle = {
     position: 'relative' as const,
@@ -217,7 +168,9 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     width: dimensions.width || 'auto',
     height: dimensions.height || 'auto',
     minWidth: '100px',
-    minHeight: '50px'
+    minHeight: '50px',
+    opacity: isLoading ? 0 : 1, // Hide while loading
+    transition: 'opacity 0.3s ease-in' // Smooth fade in when ready
   };
 
   const svgStyle = {
@@ -229,8 +182,8 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     overflow: 'visible' as const
   };
 
-  if (!isInitialized) {
-    return null; // Don't show anything until initialized
+  if (isLoading) {
+    return <Component style={containerStyle} />; // Empty container while loading
   }
 
   return (
@@ -240,31 +193,45 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
           {debug ? error : 'Error loading content'}
         </div>
       ) : (
-        <>
-          <svg
-            viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            style={svgStyle}
-          >
-            {svgContent && (
-              <motion.path
-                d={svgContent}
-                stroke={strokeColor}
-                strokeWidth={strokeWidth}
-                fill="none"
-                strokeDasharray={pathLength}
-                strokeDashoffset={pathLength}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                animate={controls}
-              />
-            )}
-          </svg>
-          <span style={{ visibility: 'hidden', display: 'block', width: dimensions.width, height: dimensions.height }}>
-            {children}
-          </span>
-        </>
+        <svg
+          viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style={svgStyle}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {/* Render completed letters */}
+          {renderedLetters.map((letter, index) => (
+            <path
+              key={`rendered-${index}`}
+              d={letter.path.path}
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              transform={`translate(${letter.path.xOffset}, ${baselineY - letter.path.height})`}
+            />
+          ))}
+          {/* Render current letter */}
+          {currentLetter && (
+            <motion.path
+              d={currentLetter.path.path}
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              transform={`translate(${currentLetter.path.xOffset}, ${baselineY - currentLetter.path.height})`}
+              initial={{ 
+                strokeDasharray: 0,
+                strokeDashoffset: 0,
+                opacity: 0 
+              }}
+              animate={controls}
+            />
+          )}
+        </svg>
       )}
     </Component>
   );
