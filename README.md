@@ -2,6 +2,10 @@
 
 A React component that animates text in a cursive handwriting style using SVG paths. Perfect for creating elegant, animated text effects in your React applications.
 
+# Demo
+
+https://cursive-npm-testing.vercel.app/
+
 ## Features
 
 - 🖋️ Smooth cursive handwriting animation
