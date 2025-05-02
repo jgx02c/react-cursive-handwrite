@@ -16,7 +16,8 @@
     "noFallthroughCasesInSwitch": true,
     "declaration": true,
     "outDir": "dist/cjs",
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src/**/*"]
 } 
