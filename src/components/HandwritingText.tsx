@@ -53,11 +53,19 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     
     const loadFont = async () => {
       try {
+        if (!fontPath) {
+          throw new Error('fontPath is required');
+        }
+
         log(`Loading font from path: ${fontPath}`);
         const paths = await initializeFont(fontPath);
         
         if (!mounted) return;
         
+        if (!paths || typeof paths !== 'object') {
+          throw new Error('Invalid font paths returned');
+        }
+
         if (Object.keys(paths).length === 0) {
           log('Warning: No letter paths were loaded');
         } else {
@@ -92,19 +100,27 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
       return;
     }
     
-    queueManagerRef.current.reset();
-    queueManagerRef.current.addText(text);
-    setRenderedLetters([]); // Clear previous letters
-    
-    // Add padding to dimensions
-    const padding = 20;
-    setDimensions({
-      width: queueManagerRef.current.getTotalLength() + (padding * 2),
-      height: queueManagerRef.current.getMaxHeight() + (padding * 2)
-    });
-    
-    // Start with first letter
-    setCurrentLetter(queueManagerRef.current.getNextLetter());
+    try {
+      queueManagerRef.current.reset();
+      queueManagerRef.current.addText(text);
+      setRenderedLetters([]); // Clear previous letters
+      
+      // Add padding to dimensions
+      const padding = 20;
+      setDimensions({
+        width: queueManagerRef.current.getTotalLength() + (padding * 2),
+        height: queueManagerRef.current.getMaxHeight() + (padding * 2)
+      });
+      
+      // Start with first letter
+      const nextLetter = queueManagerRef.current.getNextLetter();
+      if (nextLetter) {
+        setCurrentLetter(nextLetter);
+      }
+    } catch (error) {
+      log('Error processing text:', error);
+      setError(`Failed to process text: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }, [children, letterPaths, isLoading]);
 
   // Calculate baseline Y position - use 75% of max height as baseline

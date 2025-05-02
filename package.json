@@ -1,6 +1,6 @@
 {
   "name": "react-cursive-handwrite",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "React component to animate cursive handwriting text",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
