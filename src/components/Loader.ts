@@ -98,14 +98,14 @@ type LetterPaths = {
     
     let path = '';
     let xOffset = 0;
-    const letterSpacing = 10; // Reduced spacing for better alignment
+    const letterSpacing = 5; // Reduced spacing for better alignment
     let currentFill = '#000000';
   
     for (let i = 0; i < word.length; i++) {
       const letter = word[i].toLowerCase();
       if (letter === ' ') {
         // Handle spaces
-        xOffset += 30; // Space width
+        xOffset += 20; // Space width
         continue;
       }
       
@@ -169,6 +169,10 @@ type LetterPaths = {
       }
     }
   
+    // Clean up the path by removing any redundant commands
+    path = path.replace(/([MLHVCSQTAZmlhvcsqtaz])\s+/g, '$1');
+    path = path.replace(/\s+/g, ' ');
+    
     console.log(`Generated path length: ${path.length} characters`);
     return { path, fill: currentFill };
   } 

@@ -50,6 +50,7 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [pathLength, setPathLength] = React.useState(0);
+  const [isInitialized, setIsInitialized] = React.useState(false);
 
   // Initialize font
   useEffect(() => {
@@ -72,11 +73,13 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
         
         setLetterPaths(paths);
         setIsLoading(false);
+        setIsInitialized(true);
       } catch (error) {
         log('Error loading font:', error);
         if (mounted) {
           setError(`Failed to load font: ${error instanceof Error ? error.message : String(error)}`);
           setIsLoading(false);
+          setIsInitialized(true);
         }
       }
     };
@@ -119,7 +122,8 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
 
   // Calculate viewBox and dimensions based on path
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !isInitialized) return;
+    
     if (path) {
       // Direct path provided, use it without word generation
       try {
@@ -142,8 +146,7 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     log('Available letter paths:', Object.keys(letterPaths).join(', '));
     
     if (Object.keys(letterPaths).length === 0) {
-      // Still render the text but with no SVG
-      setDimensions({ width: text.length * 40, height: 60 });
+      setError('No letter paths available');
       return;
     }
     
@@ -152,8 +155,7 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
       
       if (!result.path) {
         log('No path generated for text:', text);
-        // Still render the text with no SVG animation
-        setDimensions({ width: text.length * 40, height: 60 });
+        setError('Failed to generate path');
         return;
       }
 
@@ -162,10 +164,8 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     } catch (error) {
       log('Error generating word path:', error);
       setError(`Error generating path: ${error instanceof Error ? error.message : String(error)}`);
-      // Still render the text with no SVG animation
-      setDimensions({ width: text.length * 40, height: 60 });
     }
-  }, [path, children, letterPaths, isLoading, debug]);
+  }, [path, children, letterPaths, isLoading, isInitialized, debug]);
 
   const createSvgAndSetDimensions = (pathData: string) => {
     // Create a temporary SVG element
@@ -200,6 +200,7 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
 
   useEffect(() => {
     if (svgContent && pathLength > 0) {
+      controls.set({ strokeDashoffset: pathLength });
       controls.start({
         strokeDashoffset: 0,
         transition: { 
@@ -228,11 +229,13 @@ export const HandwritingText: React.FC<HandwritingTextProps> = ({
     overflow: 'visible' as const
   };
 
+  if (!isInitialized) {
+    return null; // Don't show anything until initialized
+  }
+
   return (
     <Component style={containerStyle}>
-      {isLoading ? (
-        <div style={{ fontSize: '14px', color: '#666', padding: '10px' }}>Loading...</div>
-      ) : error ? (
+      {error ? (
         <div style={{ fontSize: '14px', color: 'red', padding: '10px' }}>
           {debug ? error : 'Error loading content'}
         </div>
